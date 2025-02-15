@@ -12,7 +12,7 @@ import (
 const (
 	screenWidth  = 800
 	screenHeight = 600
-	barWidth     = 16
+	barWidth     = 24
 )
 
 var (
@@ -28,18 +28,65 @@ func main() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("BTC/USDT Candlestick Chart")
 
-	game := &Game{}
+	game := &Game{scaleFactor: 1, offsetX: 0, offsetY: 0}
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
 
-type Game struct{}
-
-func (g *Game) Update() error {
-	return nil
+type Game struct {
+	scaleFactor float64
+	offsetX     int
+	offsetY     int
+	lastMouseX  int
+	lastMouseY  int
+	dragging    bool
 }
 
+func (g *Game) Update() error {
+	// Zoom in/out using mouse wheel
+	_, dy := ebiten.Wheel()
+	if dy > 0 {
+		g.scaleFactor *= 1.1 // Zoom in
+	} else if dy < 0 {
+		g.scaleFactor /= 1.1 // Zoom out
+	}
+
+	// Panning using arrow keys
+	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		g.offsetX += 5 // Reduced speed
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+		g.offsetX -= 5
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		g.offsetY += 5
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		g.offsetY -= 5
+	}
+
+	// Mouse dragging
+	x, y := ebiten.CursorPosition()
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		if !g.dragging {
+			// Start dragging, store initial position
+			g.dragging = true
+			g.lastMouseX = x
+			g.lastMouseY = y
+		} else {
+			// Calculate difference and apply a damping factor
+			g.offsetX += (x - g.lastMouseX) / 2 // Reduce sensitivity
+			g.offsetY += (y - g.lastMouseY) / 2
+			g.lastMouseX = x
+			g.lastMouseY = y
+		}
+	} else {
+		g.dragging = false
+	}
+
+	return nil
+}
 func (g *Game) Draw(screen *ebiten.Image) {
 	if len(Candlesticks) == 0 {
 		return
@@ -65,20 +112,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	// Calculate spacing
-	xOffset := screenWidth - len(Candlesticks)*barWidth
+	xOffset := screenWidth - len(Candlesticks)*barWidth + g.offsetX
 
-	const minCandleHeight = 1
+	var minCandleHeight = 1.0 * g.scaleFactor
 
 	for i, c := range Candlesticks {
 		x := xOffset + i*barWidth
 
-		scaleFactor := screenHeight * 0.3 // Reduzir um pouco a escala
-		margin := screenHeight * 0.1      // Adicionar uma margem no topo e base
+		scaleFactor := (screenHeight * 0.3) * g.scaleFactor // Apply zoom
+		margin := (screenHeight * 0.1) * g.scaleFactor      // Scale margin
 
-		yOpen := int(screenHeight - margin - ((Atof(c.OpenPrice)-minPrice)/priceRange)*scaleFactor)
-		yClose := int(screenHeight - margin - ((Atof(c.ClosePrice)-minPrice)/priceRange)*scaleFactor)
-		yHigh := int(screenHeight - margin - ((Atof(c.HighPrice)-minPrice)/priceRange)*scaleFactor)
-		yLow := int(screenHeight - margin - ((Atof(c.LowPrice)-minPrice)/priceRange)*scaleFactor)
+		yOpen := (screenHeight - margin - ((Atof(c.OpenPrice)-minPrice)/priceRange)*scaleFactor) + float64(g.offsetY)
+		yClose := (screenHeight - margin - ((Atof(c.ClosePrice)-minPrice)/priceRange)*scaleFactor) + float64(g.offsetY)
+		yHigh := (screenHeight - margin - ((Atof(c.HighPrice)-minPrice)/priceRange)*scaleFactor) + float64(g.offsetY)
+		yLow := (screenHeight - margin - ((Atof(c.LowPrice)-minPrice)/priceRange)*scaleFactor) + float64(g.offsetY)
 
 		if abs(yOpen-yClose) < minCandleHeight {
 			if yOpen > yClose {
@@ -117,7 +164,7 @@ func Atoi(s string) int {
 	return i
 }
 
-func abs(x int) int {
+func abs(x float64) float64 {
 	if x < 0 {
 		return -x
 	}
