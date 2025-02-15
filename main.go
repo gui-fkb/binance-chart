@@ -85,6 +85,12 @@ func (g *Game) Update() error {
 		g.dragging = false
 	}
 
+	if ebiten.IsKeyPressed(ebiten.KeyR) { // Press 'R' to reset
+		g.scaleFactor = 1.0
+		g.offsetX = 0
+		g.offsetY = 0
+	}
+
 	return nil
 }
 func (g *Game) Draw(screen *ebiten.Image) {
